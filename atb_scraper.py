@@ -29,7 +29,7 @@ HEADERS = {
 }
 
 PRODUCT_HREF = re.compile(r"/product/([^/?#]+)")
-PRICE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*грн/(?:шт|кг)")
+PRICE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*грн\s*/\s*(?:шт|кг)")
 CARD_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*[AА][TТ][БB]")  # цена по карте АТБ
 WEIGHT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(кг|г|л|мл)\b", re.I)
 FAT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
@@ -115,8 +115,24 @@ def parse_page(html):
 
 def fetch(url):
     r = requests.get(url, headers=HEADERS, timeout=30)
+    print(f"  HTTP {r.status_code}, final url: {r.url}")
     r.raise_for_status()
     return r.text
+
+
+def describe(html):
+    """Диагностика: что за страница пришла."""
+    soup = BeautifulSoup(html, "html.parser")
+    title = soup.title.get_text(strip=True) if soup.title else "-"
+    n = html.count("/product/")
+    print(f"  {len(html)} bytes, title={title[:90]!r}, '/product/' x{n}")
+    first = soup.find("a", href=PRODUCT_HREF)
+    if first is None:
+        print("  no product links. Page text:", soup.get_text(" ", strip=True)[:300])
+    else:
+        card = card_for(first)
+        print("  first card text:", card.get_text(" ", strip=True)[:300])
+        print("  first card html:", str(card)[:500].replace("\n", " "))
 
 
 def scrape_category(cat):
@@ -125,7 +141,10 @@ def scrape_category(cat):
     for page in range(1, MAX_PAGES + 1):
         url = f"{prefix}catalog/{cat}" + (f"?page={page}" if page > 1 else "")
         try:
-            items = parse_page(fetch(url))
+            html = fetch(url)
+            if page == 1:
+                describe(html)
+            items = parse_page(html)
         except Exception as e:  # noqa: BLE001
             print(f"  ! {url}: {e}", file=sys.stderr)
             break
