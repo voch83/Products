@@ -35,6 +35,14 @@ WEIGHT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(кг|г|л|мл)\b", re.I)
 FAT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 
 
+# На сайте рубли и копейки лежат в разных тегах: "57. 90" -> "57.90"
+SPLIT_NUM_RE = re.compile(r"(\d)\s*([.,])\s*(\d)")
+
+
+def fix_numbers(text):
+    return SPLIT_NUM_RE.sub(r"\1.\3", text)
+
+
 def num(s):
     return float(s.replace(",", "."))
 
@@ -94,7 +102,7 @@ def parse_page(html):
         name = next((t for t in (a.get_text(" ", strip=True) for a in links) if t), "")
         if not name:
             continue
-        text = card_for(links[0]).get_text(" ", strip=True)
+        text = fix_numbers(card_for(links[0]).get_text(" ", strip=True))
         if "Немає в наявності" in text:
             continue
         m = PRICE_RE.search(text)
