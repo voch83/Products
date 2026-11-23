@@ -17,10 +17,49 @@ from bs4 import BeautifulSoup
 
 BASE = "https://www.atbmarket.com"
 CITY = os.environ.get("ATB_CITY", "").strip().strip("/")
-# Молоко, Масло и маргарин, Хліб, М'ясні та рибні консерви
-CATEGORIES = ["398-moloko", "414-maslo-i-margarin", "331-khlib", "masni-ta-ribni-konservi"]
+# Все продуктовые разделы каталога АТБ (без алкоголя, химии, одежды и т.п.)
+CATEGORIES = [
+    # Овочі та фрукти
+    "446-gorikhi-sukhofrukti", "298-gribi", "390-zelen", "289-ovochi",
+    "468-solinnya-salati", "288-frukti-yagodi",
+    # Бакалія
+    "341-boroshno", "444-buterbrodni-masla-zakuski-pasti", "dzem-pasta-med",
+    "371-diabetichna-ta-dietichna-produktsiya", "iza-svidkogo-prigotuvanna", "395-krupi",
+    "masni-ta-ribni-konservi", "431-mayonez", "348-makaronni-virobi",
+    "ovoceva-ta-fruktova-konservacia", "olia-ta-ocet", "305-pripravi-ta-marinadi",
+    "365-sousi-ketchupi", "378-sukhi-snidanki", "306-tovari-dlya-vipichki", "312-tsukor",
+    # Молочні продукти та яйця
+    "399-vershki", "422-dityacha-molochna-produktsiya", "zgusene-moloko", "349-yogurti",
+    "316-kislomolochni-napoi", "414-maslo-i-margarin", "398-moloko", "382-molochni-deserti",
+    "379-sir-kislomolochniy", "317-sirki-glazurovani", "380-sirki-dityachi", "329-smetana",
+    "381-yaytsya-kuryachi-perepelini",
+    # Напої безалкогольні
+    "364-yenergetichni", "kvas", "mineralna-i-pitna-voda", "307-napoi", "324-soki-nektari",
+    # М'ясо, сири, ковбаси
+    "421-m-yasni-napivfabrikati", "344-m-yaso-okholodzhene",
+    "402-siri-m-yaki", "439-siri-plavleni", "433-siri-tverdi",
+    "408-inshi-m-yasni-virobi", "kovbasa", "narizki-ta-delikatesi", "377-sosiski-sardel-ki",
+    # Кондитерські вироби
+    "327-batonchiki", "biskviti-ta-deserti", "338-vafli", "490-drazhe", "301-zhuval-ni-gumki",
+    "409-krekeri", "kruasani-ta-zefir", "pasti-sokoladno-gorihovi", "pecivo-praniki",
+    "300-skhidni-solodoshchi", "351-torti-i-tistechka", "321-tsukerki", "303-shokolad",
+    # Риба і морепродукти
+    "ikra-ta-ribna-pasta", "406-krabovi-palichki", "moreprodukti", "440-preservi", "riba",
+    "441-ribna-narizka",
+    # Хлібобулочні вироби
+    "333-baton", "326-bulochni-listkovi-virobi", "482-garyacha-vipichka", "397-lavash",
+    "suska-ta-suhari", "331-khlib", "347-khlibtsi",
+    # Заморожені продукти
+    "356-vareniki-pel-meni-mlintsi", "334-morozivo", "457-napivfabrikati",
+    "452-ovochi-ta-frukti-svizhozamorozheni", "430-tisto-vipichka-pitsa",
+    # Кава, чай, снеки, дитяче харчування, кулінарія
+    "286-kava-kakao", "318-chay", "sneki", "cipsi",
+    "367-voda", "418-dityache-pechivo", "386-kashi", "366-molochni-sumishi", "340-pyure",
+    "368-soki-chay", "503-buterbrodi-burgeri", "416-vasabi-imbir-otset", "464-nori-i-panirovka",
+]
 MAX_PAGES = 30
-DELAY = 1.5  # пауза между запросами, не нагружаем сайт
+DELAY = 1.2  # пауза между запросами, не нагружаем сайт
+DEBUG = os.environ.get("DEBUG") == "1"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -116,16 +155,21 @@ def parse_page(html):
             "weight_g": weight_g(name),
             "fat": fat_percent(name),
             "tags": tags_for(name),
-            "url": f"{BASE}/product/{slug}",
         }
     return items
 
 
 def fetch(url):
-    r = requests.get(url, headers=HEADERS, timeout=30)
-    print(f"  HTTP {r.status_code}, final url: {r.url}")
-    r.raise_for_status()
-    return r.text
+    last = None
+    for attempt in range(3):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=30)
+            r.raise_for_status()
+            return r.text
+        except Exception as e:  # noqa: BLE001
+            last = e
+            time.sleep(3 * (attempt + 1))
+    raise last
 
 
 def describe(html):
@@ -150,7 +194,7 @@ def scrape_category(cat):
         url = f"{prefix}catalog/{cat}" + (f"?page={page}" if page > 1 else "")
         try:
             html = fetch(url)
-            if page == 1:
+            if DEBUG and page == 1:
                 describe(html)
             items = parse_page(html)
         except Exception as e:  # noqa: BLE001
